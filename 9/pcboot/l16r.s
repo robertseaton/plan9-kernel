@@ -25,37 +25,6 @@
 TEXT _start16r(SB), $0
 	CLI				/* interrupts off */
 
-	/* make the jump conditional to keep 8l from moving _multibootheader */
-	LWI(1, rAX)
-	SUBI(1, rAX)
-	JEQ	pastmboothdr
-
-/*
- * Must be 4-byte aligned & within 8K of the image's start.
- */
-	NOP
-	NOP
-#include "mboot.s"
-
-TEXT _hello(SB), $0
-	BYTE $'\r';
-	BYTE $'\n';
-	BYTE $'P'; BYTE $'l'; BYTE $'a'; BYTE $'n';
-	BYTE $' '; BYTE $'9'; BYTE $' '; BYTE $'f';
-	BYTE $'r'; BYTE $'o'; BYTE $'m'; BYTE $' ';
-	BYTE $'B'; BYTE $'e'; BYTE $'l'; BYTE $'l';
-	BYTE $' '; BYTE $'L'; BYTE $'a'; BYTE $'b';
-	BYTE $'s'; 
-	BYTE $'\z';
-
-TEXT _DI(SB), $0
-	BYTE $0; BYTE $0; BYTE $0; BYTE $0;
-
-TEXT _ES(SB), $0
-	BYTE $0; BYTE $0; BYTE $0; BYTE $0;
-
-	/* continued from before _multibootheader */
-pastmboothdr:
 	MFSR(rCS, rAX)
 	MTSR(rAX, rDS)			/* set the data segment */
 
@@ -122,18 +91,18 @@ _floppyend:
 /*
  * Check for APM1.2 BIOS support.
  */
-_apmstart:
 	LWI(0x5304, rAX)		/* disconnect anyone else */
 	CLR(rBX)
 	BIOSCALL(0x15)
+	JCS	_apmfail
 
 	LWI(0x5303, rAX)		/* connect */
 	CLR(rBX)
 	CLC
 	BIOSCALL(0x15)
-
 	JCC	_apmpush
-	LW(_ES(SB), rAX)
+_apmfail:
+	LW(_ES(SB), rAX)		/* no support */
 	MTSR(rAX, rES)
 	LW(_DI(SB), rDI)
 	JCS	_apmend
@@ -168,8 +137,6 @@ _apmend:
  * ES/DI on failure. Consequently they may not be valid
  * at _e820end:.
  */
-
-_e820start:
 	SW(rDI, _DI(SB))		/* save DI */
 	CLR(rAX)			/* write terminator */
 	STOSW
@@ -189,7 +156,7 @@ _e820loop:
 	LLI(0x534D4150, rDX)		/* signature - ASCII "SMAP" */
 	LLI(0x0000E820, rAX)		/* function code */
 
-	BIOSCALL(0x15)
+	BIOSCALL(0x15)			/* writes 20 bytes at (es,di) */
 
 	JCS	_e820pop		/* some kind of error */
 	LLI(0x534D4150, rDX)
@@ -246,3 +213,20 @@ _real:
 	MTSR(rAX, rSS)
 
 	FARJUMP32(SELECTOR(2, SELGDT, 0), _start32p-KZERO(SB))
+
+TEXT _hello(SB), $0
+	BYTE $'\r';
+	BYTE $'\n';
+	BYTE $'P'; BYTE $'l'; BYTE $'a'; BYTE $'n';
+	BYTE $' '; BYTE $'9'; BYTE $' '; BYTE $'f';
+	BYTE $'r'; BYTE $'o'; BYTE $'m'; BYTE $' ';
+	BYTE $'B'; BYTE $'e'; BYTE $'l'; BYTE $'l';
+	BYTE $' '; BYTE $'L'; BYTE $'a'; BYTE $'b';
+	BYTE $'s'; 
+	BYTE $'\z';
+
+TEXT _DI(SB), $0
+	LONG $0
+
+TEXT _ES(SB), $0
+	LONG $0
